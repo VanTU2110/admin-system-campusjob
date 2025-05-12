@@ -111,7 +111,7 @@ const SkillPage = () => {
       ),
     },
     {
-      title: "ID",
+      title: "UUID",
       dataIndex: "uuid",
       key: "uuid",
       render: (text: string) => (

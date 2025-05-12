@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Input, Button, Space, Card, Tag, Tooltip, Spin, Empty, Modal, Select, DatePicker, Form, message } from 'antd';
-import { SearchOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, InfoCircleOutlined, ReloadOutlined, FilterOutlined } from '@ant-design/icons';
+import { Table, Input, Button, Space, Card, Tag, Tooltip, Spin, Empty, Modal, Select, Collapse, Typography, Divider, message } from 'antd';
+import { SearchOutlined, UserAddOutlined, InfoCircleOutlined, ReloadOutlined, FilterOutlined, FileTextOutlined, CloseOutlined } from '@ant-design/icons';
 import { getPageListStudent } from '../../services/studentService';
+import { getPageListReport } from '../../services/reportService';
 import type { StudentDetail, ListStudentResponse } from '../../types/student';
+import type { Report, ListReportResponse } from '../../types/report';
 import type { Location } from '../../types/location';
 import type { Pagination } from '../../types/pagination';
 
 const { Option } = Select;
+const { Title, Text } = Typography;
+const { Panel } = Collapse;
 
 const StudentPage = () => {
   const [students, setStudents] = useState<StudentDetail[]>([]);
@@ -21,6 +25,18 @@ const StudentPage = () => {
   const [viewModalVisible, setViewModalVisible] = useState<boolean>(false);
   const [selectedStudent, setSelectedStudent] = useState<StudentDetail | null>(null);
   const [genderFilter, setGenderFilter] = useState<number | null>(null);
+  
+  // Thêm state cho báo cáo
+  const [showReports, setShowReports] = useState<boolean>(false);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [reportsLoading, setReportsLoading] = useState<boolean>(false);
+  const [reportsPagination, setReportsPagination] = useState({
+    pageSize: 5,
+    page: 1,
+    totalCount: 0,
+    totalPage: 1,
+  });
+  const [selectedStudentForReport, setSelectedStudentForReport] = useState<StudentDetail | null>(null);
 
   // Fetch student data
   const fetchStudents = async (page = 1, pageSize = 10, keyword = '') => {
@@ -60,12 +76,56 @@ const StudentPage = () => {
     }
   };
 
+  // Thêm hàm fetch báo cáo
+  const fetchReports = async (targetUuid: string, page = 1, pageSize = 5) => {
+    setReportsLoading(true);
+    try {
+      const response = await getPageListReport({
+        page,
+        pageSize,
+        targetType: 'student',
+        targetUuid,
+      });
+      
+      console.log('Report API Response:', response);
+      
+      if (response && response.data && response.data.items) {
+        setReports(response.data.items);
+        if (response.data.pagination) {
+          setReportsPagination({
+            page: page,
+            pageSize: pageSize,
+            totalCount: response.data.pagination.totalCount,
+            totalPage: response.data.pagination.totalPage
+          });
+        }
+      } else {
+        console.error('Invalid report response structure:', response);
+        message.error('Không thể lấy dữ liệu báo cáo');
+        setReports([]);
+      }
+    } catch (error) {
+      console.error('Error fetching report data:', error);
+      message.error('Đã xảy ra lỗi khi tải dữ liệu báo cáo');
+      setReports([]);
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchStudents(pagination.page, pagination.pageSize, searchKeyword);
   }, []);
 
   const handleTableChange = (tablePagination: any) => {
     fetchStudents(tablePagination.current, tablePagination.pageSize, searchKeyword);
+  };
+
+  // Xử lý thay đổi phân trang báo cáo
+  const handleReportTableChange = (tablePagination: any) => {
+    if (selectedStudent) {
+      fetchReports(selectedStudent.uuid, tablePagination.current, tablePagination.pageSize);
+    }
   };
 
   const handleSearch = () => {
@@ -83,9 +143,31 @@ const StudentPage = () => {
     setViewModalVisible(true);
   };
 
+  // Xử lý khi nhấn xem báo cáo
+  const handleViewReports = (student: StudentDetail) => {
+    // Nếu đã đang xem báo cáo của sinh viên này, đóng lại
+    if (showReports && selectedStudentForReport?.uuid === student.uuid) {
+      setShowReports(false);
+      setSelectedStudentForReport(null);
+      setReports([]);
+    } else {
+      // Nếu chưa xem hoặc đang xem báo cáo của sinh viên khác
+      setSelectedStudentForReport(student);
+      setShowReports(true);
+      fetchReports(student.uuid);
+    }
+  };
+
   const closeViewModal = () => {
     setViewModalVisible(false);
     setSelectedStudent(null);
+  };
+
+  // Đóng phần báo cáo
+  const closeReports = () => {
+    setShowReports(false);
+    setSelectedStudentForReport(null);
+    setReports([]);
   };
 
   const getGenderLabel = (gender: number) => {
@@ -96,6 +178,21 @@ const StudentPage = () => {
         return <Tag color="pink">Nữ</Tag>;
       default:
         return <Tag color="purple">Khác</Tag>;
+    }
+  };
+
+  const getReportStatusLabel = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return <Tag color="orange">Chờ xử lý</Tag>;
+      case 'processing':
+        return <Tag color="blue">Đang xử lý</Tag>;
+      case 'resolved':
+        return <Tag color="green">Đã giải quyết</Tag>;
+      case 'rejected':
+        return <Tag color="red">Từ chối</Tag>;
+      default:
+        return <Tag color="default">{status}</Tag>;
     }
   };
 
@@ -188,19 +285,62 @@ const StudentPage = () => {
             icon={<InfoCircleOutlined />}
             onClick={() => handleViewStudent(record)}
             className="text-blue-500 hover:text-blue-700"
+            title="Xem chi tiết"
           />
           <Button
             type="text"
-            icon={<EditOutlined />}
-            className="text-green-500 hover:text-green-700"
-          />
-          <Button
-            type="text"
-            icon={<DeleteOutlined />}
-            className="text-red-500 hover:text-red-700"
+            icon={<FileTextOutlined />}
+            onClick={() => handleViewReports(record)}
+            className="text-orange-500 hover:text-orange-700"
+            title="Xem báo cáo"
           />
         </Space>
       ),
+    },
+  ];
+
+  // Định nghĩa cột cho bảng báo cáo
+  const reportColumns = [
+    {
+      title: 'Mã báo cáo',
+      dataIndex: 'uuid',
+      key: 'uuid',
+      render: (text: string) => (
+        <span className="font-medium">{text || 'N/A'}</span>
+      ),
+      ellipsis: true,
+    },
+    {
+      title: 'Người báo cáo',
+      dataIndex: 'reporterUuid',
+      key: 'reporterUuid',
+      render: (text: string) => (
+        <span>{text || 'N/A'}</span>
+      ),
+      ellipsis: true,
+    },
+    {
+      title: 'Lý do',
+      dataIndex: 'reason',
+      key: 'reason',
+      render: (text: string) => (
+        <Tooltip placement="topLeft" title={text || 'N/A'}>
+          <span>{text || 'N/A'}</span>
+        </Tooltip>
+      ),
+      ellipsis: true,
+    },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: string) => getReportStatusLabel(status),
+    },
+    {
+      title: 'Ngày tạo',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      render: (date: string) => formatDate(date),
     },
   ];
 
@@ -363,6 +503,82 @@ const StudentPage = () => {
           </div>
         )}
       </Modal>
+
+      {/* Reports Section */}
+      {showReports && selectedStudentForReport && (
+        <Card 
+          className="shadow-md mt-6" 
+          title={
+            <div className="flex justify-between items-center">
+              <Title level={4} className="m-0">
+                Báo cáo về sinh viên: {selectedStudentForReport.fullname}
+              </Title>
+              <Button
+                type="text"
+                icon={<CloseOutlined />}
+                onClick={closeReports}
+                className="text-gray-500"
+              />
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="border-b pb-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Text type="secondary" className="block">Họ tên</Text>
+                  <Text strong>{selectedStudentForReport.fullname || 'N/A'}</Text>
+                </div>
+                <div>
+                  <Text type="secondary" className="block">Mã sinh viên</Text>
+                  <Text strong>{selectedStudentForReport.uuid || 'N/A'}</Text>
+                </div>
+                <div>
+                  <Text type="secondary" className="block">Trường</Text>
+                  <Text strong>{selectedStudentForReport.university || 'N/A'}</Text>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <Divider orientation="left">Danh sách báo cáo</Divider>
+              
+              {reportsLoading ? (
+                <div className="flex justify-center items-center p-12">
+                  <Spin size="large" />
+                </div>
+              ) : reports.length === 0 ? (
+                <Empty description="Không có báo cáo nào về sinh viên này" />
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table
+                    dataSource={reports}
+                    columns={reportColumns}
+                    rowKey="uuid"
+                    pagination={{
+                      current: reportsPagination.page,
+                      pageSize: reportsPagination.pageSize,
+                      total: reportsPagination.totalCount,
+                      showSizeChanger: true,
+                      showTotal: (total) => `Tổng cộng: ${total} báo cáo`,
+                    }}
+                    onChange={handleReportTableChange}
+                    className="bg-white"
+                    expandable={{
+                      expandedRowRender: (record) => (
+                        <div className="p-4 bg-gray-50">
+                          <Text strong className="block mb-2">Mô tả chi tiết:</Text>
+                          <Text>{record.description || 'Không có mô tả'}</Text>
+                        </div>
+                      ),
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 };
