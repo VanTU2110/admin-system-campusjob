@@ -19,36 +19,38 @@ export default function Sidebar() {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    localStorage.removeItem('token'); // hoặc 'accessToken' tùy cách bạn lưu
+    localStorage.removeItem('token');
     navigate('/login');
   };
 
   return (
-    <aside className="w-64 h-screen bg-gray-900 text-white flex flex-col justify-between fixed left-0 top-0 p-5">
+    <aside className="w-64 h-screen bg-[#f4f6f8] text-gray-800 flex flex-col justify-between fixed left-0 top-0 p-6 border-r border-gray-200 shadow-sm">
       <div>
-        <h1 className="text-2xl font-bold mb-8">Quản trị</h1>
+        <h1 className="text-2xl font-semibold mb-8">🎓 Quản trị</h1>
         <nav className="space-y-2">
-          {menu.map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`flex items-center gap-3 px-4 py-2 rounded-md transition ${
-                location.pathname === item.path
-                  ? 'bg-gray-700'
-                  : 'hover:bg-gray-800'
-              }`}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </Link>
-          ))}
+          {menu.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex items-center gap-3 px-4 py-2 rounded-md font-medium transition-all duration-200 ${
+                  isActive
+                    ? 'bg-white shadow text-blue-600'
+                    : 'hover:bg-gray-200'
+                }`}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </nav>
       </div>
 
-      {/* Nút đăng xuất */}
       <button
         onClick={handleLogout}
-        className="flex items-center gap-3 px-4 py-2 mt-10 rounded-md bg-red-600 hover:bg-red-700 transition"
+        className="flex items-center gap-3 px-4 py-2 mt-10 rounded-md bg-red-500 hover:bg-red-600 text-white font-medium transition"
       >
         <LogOut size={20} />
         <span>Đăng xuất</span>

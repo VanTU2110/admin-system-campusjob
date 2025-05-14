@@ -7,6 +7,7 @@ import CompanyPage from './pages/company';
 import SkillPage from './pages/skills';
 import RequireAuth from './components/RequireAuth';
 import Layout from './components/Layout';
+import StudentDetailPage from './pages/student/studentdetail';
 
 function App() {
   return (
@@ -21,11 +22,13 @@ function App() {
           </RequireAuth>
         }
       >
-        <Route path="/" element={<Navigate to="/student" replace />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/student" element={<StudentPage />} />
         <Route path="/company" element={<CompanyPage />} />
         <Route path="/skill" element={<SkillPage />} />
         <Route path="/reports" element={<div>Báo cáo</div>} />
+        <Route path="/student-detail/:studentUuid" element={<StudentDetailPage />} />
+
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />

@@ -1,5 +1,5 @@
 import api from "./api";
-import type { ListStudentResponse, GetPageStudentParams} from "../types/student";
+import type { ListStudentResponse, GetPageStudentParams,DetailStudentResponse} from "../types/student";
 
 export const getPageListStudent = async (params: GetPageStudentParams): Promise<ListStudentResponse> => {
   try {
@@ -10,3 +10,7 @@ export const getPageListStudent = async (params: GetPageStudentParams): Promise<
     throw error;
   }
 };
+export const getStudentDetail = async (uuid: string): Promise<DetailStudentResponse> => {
+  const res = await api.post('/Student/detail-student-by-studentuuid', { uuid });
+  return res.data;
+}

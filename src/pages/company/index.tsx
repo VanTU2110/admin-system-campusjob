@@ -11,12 +11,16 @@ import {
   Card,
   Divider,
   Alert,
+  message,
 } from "antd";
 import { EyeOutlined, FileTextOutlined, CloseOutlined } from "@ant-design/icons";
 import { getPageCompany } from "../../services/companyService";
 import { getPageListReport } from "../../services/reportService";
 import type { CompanyDetail } from "../../types/company";
 import type { Report } from "../../types/report";
+import { Link } from "react-router-dom";
+import { createWarning } from "../../services/warningService";
+import { Text } from "lucide-react";
 
 const { Title } = Typography;
 const { Search } = Input;
@@ -35,7 +39,7 @@ const CompanyPage = () => {
   const [keyword, setKeyword] = useState("");
   const [selectedCompany, setSelectedCompany] = useState<CompanyDetail | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  
+
   // Thêm state cho báo cáo
   const [showReportSection, setShowReportSection] = useState(false);
   const [reportData, setReportData] = useState<Report[]>([]);
@@ -43,7 +47,11 @@ const CompanyPage = () => {
   const [reportTotal, setReportTotal] = useState(0);
   const [loadingReports, setLoadingReports] = useState(false);
   const [currentReportCompany, setCurrentReportCompany] = useState<CompanyDetail | null>(null);
-
+  //State cho cảnh báo
+  // State for warning modal
+  const [warningModalVisible, setWarningModalVisible] = useState<boolean>(false);
+  const [warningMessage, setWarningMessage] = useState<string>("");
+  const [warningTargetUuid, setWarningTargetUuid] = useState<string>("");
   const fetchData = async () => {
     try {
       const res = await getPageCompany({
@@ -74,6 +82,31 @@ const CompanyPage = () => {
       console.error("Lỗi khi tải dữ liệu báo cáo:", error);
     } finally {
       setLoadingReports(false);
+    }
+  };
+  const handleOpenWarningModal = (userUuid: string) => {
+    setWarningTargetUuid(userUuid);
+    setWarningModalVisible(true);
+  };
+  const handleSubmitWarning = async () => {
+    if (!warningMessage.trim()) {
+      message.error('Vui lòng nhập nội dung cảnh báo');
+      return;
+    }
+
+    try {
+      await createWarning({
+        targetType: 'company',
+        targetUuid: warningTargetUuid,
+        messages: warningMessage
+      });
+
+      message.success('Đã gửi cảnh báo thành công');
+      setWarningModalVisible(false);
+      setWarningMessage("");
+    } catch (error) {
+      console.error('Error sending warning:', error);
+      message.error('Không thể gửi cảnh báo, vui lòng thử lại sau');
     }
   };
 
@@ -165,12 +198,19 @@ const CompanyPage = () => {
             Xem
           </Button>
           <Button
-            type="default" 
+            type="default"
             size="small"
             icon={<FileTextOutlined />}
             onClick={() => showCompanyReports(record)}
           >
             Báo cáo
+          </Button>
+          <Button
+            type="default"
+            className="bg-yellow-500 hover:bg-yellow-600 text-white"
+            onClick={() => handleOpenWarningModal(record.userUuid)}
+          >
+            Cảnh báo
           </Button>
         </Space>
       ),
@@ -184,6 +224,14 @@ const CompanyPage = () => {
       dataIndex: "reporterUuid",
       key: "reporterUuid",
       width: 150,
+      render: (studentUuid: string) => (
+        <Link
+          to={`/student-detail/${studentUuid}`}
+          className="text-blue-600 hover:text-blue-800 hover:underline"
+        >
+          {studentUuid}
+        </Link>
+      )
     },
     {
       title: "Lý do",
@@ -256,7 +304,7 @@ const CompanyPage = () => {
       {/* Phần hiển thị báo cáo ở dưới bảng công ty */}
       {showReportSection && currentReportCompany && (
         <div style={{ marginTop: 20 }}>
-          <Card 
+          <Card
             title={
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
@@ -264,11 +312,11 @@ const CompanyPage = () => {
                   <span style={{ fontWeight: 500 }}>Báo cáo của công ty: </span>
                   <Tag color="blue">{currentReportCompany.name}</Tag>
                 </div>
-                <Button 
-                  type="primary" 
-                  danger 
+                <Button
+                  type="primary"
+                  danger
                   size="small"
-                  icon={<CloseOutlined />} 
+                  icon={<CloseOutlined />}
                   onClick={closeReportSection}
                 >
                   Đóng
@@ -300,7 +348,38 @@ const CompanyPage = () => {
           </Card>
         </div>
       )}
-
+      {/* Warning Modal */}
+      <Modal
+        title="Gửi cảnh báo cho công ty"
+        open={warningModalVisible}
+        onCancel={() => setWarningModalVisible(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setWarningModalVisible(false)}>
+            Hủy
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            onClick={handleSubmitWarning}
+            className="bg-blue-500 hover:bg-blue-600"
+          >
+            Gửi cảnh báo
+          </Button>,
+        ]}
+      >
+        <div className="space-y-4">
+          <div>
+            <Text strong>Nội dung cảnh báo:</Text>
+            <Input.TextArea
+              rows={4}
+              value={warningMessage}
+              onChange={(e) => setWarningMessage(e.target.value)}
+              placeholder="Nhập nội dung cảnh báo cho công ty..."
+              className="mt-2"
+            />
+          </div>
+        </div>
+      </Modal>
       {/* Modal chi tiết công ty */}
       <Modal
         title="Chi tiết công ty"
@@ -339,6 +418,7 @@ const CompanyPage = () => {
           </Descriptions>
         )}
       </Modal>
+
     </div>
   );
 }

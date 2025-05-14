@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Input, Button, Space, Card, Tag, Tooltip, Spin, Empty, Modal, Select, Collapse, Typography, Divider, message } from 'antd';
-import { SearchOutlined, UserAddOutlined, InfoCircleOutlined, ReloadOutlined, FilterOutlined, FileTextOutlined, CloseOutlined } from '@ant-design/icons';
+import { SearchOutlined, UserAddOutlined, InfoCircleOutlined, ReloadOutlined, FilterOutlined, FileTextOutlined, CloseOutlined, WarningOutlined } from '@ant-design/icons';
 import { getPageListStudent } from '../../services/studentService';
 import { getPageListReport } from '../../services/reportService';
+import { createWarning } from '../../services/warningService';
+
 import type { StudentDetail, ListStudentResponse } from '../../types/student';
 import type { Report, ListReportResponse } from '../../types/report';
 import type { Location } from '../../types/location';
-import type { Pagination } from '../../types/pagination';
+import type { CreateWarningParams, DetailWarningResponse } from '../../types/warning';
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -37,6 +39,11 @@ const StudentPage = () => {
     totalPage: 1,
   });
   const [selectedStudentForReport, setSelectedStudentForReport] = useState<StudentDetail | null>(null);
+  
+  // Thêm state cho cảnh báo
+  const [warningModalVisible, setWarningModalVisible] = useState<boolean>(false);
+  const [warningMessage, setWarningMessage] = useState<string>("");
+  const [warningTargetUuid, setWarningTargetUuid] = useState<string>("");
 
   // Fetch student data
   const fetchStudents = async (page = 1, pageSize = 10, keyword = '') => {
@@ -86,9 +93,7 @@ const StudentPage = () => {
         targetType: 'student',
         targetUuid,
       });
-      
-      console.log('Report API Response:', response);
-      
+            
       if (response && response.data && response.data.items) {
         setReports(response.data.items);
         if (response.data.pagination) {
@@ -110,6 +115,35 @@ const StudentPage = () => {
       setReports([]);
     } finally {
       setReportsLoading(false);
+    }
+  };
+  
+  // Xử lý mở modal cảnh báo
+  const handleOpenWarningModal = (userUuid: string) => {
+    setWarningTargetUuid(userUuid);
+    setWarningModalVisible(true);
+  };
+  
+  // Xử lý gửi cảnh báo
+  const handleSubmitWarning = async () => {
+    if (!warningMessage.trim()) {
+      message.error('Vui lòng nhập nội dung cảnh báo');
+      return;
+    }
+
+    try {
+      await createWarning({
+        targetType: 'student',
+        targetUuid: warningTargetUuid,
+        messages: warningMessage
+      });
+      
+      message.success('Đã gửi cảnh báo thành công');
+      setWarningModalVisible(false);
+      setWarningMessage("");
+    } catch (error) {
+      console.error('Error sending warning:', error);
+      message.error('Không thể gửi cảnh báo, vui lòng thử lại sau');
     }
   };
 
@@ -294,6 +328,14 @@ const StudentPage = () => {
             className="text-orange-500 hover:text-orange-700"
             title="Xem báo cáo"
           />
+          <Button
+            type="default"
+            icon={<WarningOutlined />}
+            onClick={() => handleOpenWarningModal(record.userUuid)}
+            className="bg-yellow-500 hover:bg-yellow-600 text-white"
+          >
+            Cảnh báo
+          </Button>
         </Space>
       ),
     },
@@ -579,6 +621,39 @@ const StudentPage = () => {
           </div>
         </Card>
       )}
+
+      {/* Warning Modal */}
+      <Modal
+        title="Gửi cảnh báo cho sinh viên"
+        open={warningModalVisible}
+        onCancel={() => setWarningModalVisible(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setWarningModalVisible(false)}>
+            Hủy
+          </Button>,
+          <Button 
+            key="submit" 
+            type="primary"
+            onClick={handleSubmitWarning}
+            className="bg-blue-500 hover:bg-blue-600"
+          >
+            Gửi cảnh báo
+          </Button>,
+        ]}
+      >
+        <div className="space-y-4">
+          <div>
+            <Text strong>Nội dung cảnh báo:</Text>
+            <Input.TextArea
+              rows={4}
+              value={warningMessage}
+              onChange={(e) => setWarningMessage(e.target.value)}
+              placeholder="Nhập nội dung cảnh báo cho sinh viên..."
+              className="mt-2"
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

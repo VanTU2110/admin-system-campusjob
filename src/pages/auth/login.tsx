@@ -49,7 +49,7 @@ const LoginPage = () => {
 
       <Card className="w-full max-w-md shadow-lg" bordered={false}>
         <Title level={3} className="text-center mb-6">
-          Đăng nhập công ty
+          Đăng nhập quản trị hệ thống
         </Title>
 
         <Form
