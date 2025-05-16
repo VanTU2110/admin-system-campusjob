@@ -12,8 +12,9 @@ import {
   Divider,
   Alert,
   message,
+  Spin,
 } from "antd";
-import { EyeOutlined, FileTextOutlined, CloseOutlined } from "@ant-design/icons";
+import { EyeOutlined, FileTextOutlined, CloseOutlined, WarningOutlined, LockOutlined, UnlockOutlined } from "@ant-design/icons";
 import { getPageCompany } from "../../services/companyService";
 import { getPageListReport } from "../../services/reportService";
 import type { CompanyDetail } from "../../types/company";
@@ -21,6 +22,8 @@ import type { Report } from "../../types/report";
 import { Link } from "react-router-dom";
 import { createWarning } from "../../services/warningService";
 import { Text } from "lucide-react";
+import type { User, UserResponse, UpdateResponse } from '../../types/user';
+import { updateStatus, detailUser } from '../../services/userService';
 
 const { Title } = Typography;
 const { Search } = Input;
@@ -30,7 +33,8 @@ const CompanyPage = () => {
   const tableStyle = {
     boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
     borderRadius: '8px',
-    overflow: 'hidden'
+    overflow: 'hidden',
+     width: '100%'
   };
   const [data, setData] = useState<CompanyDetail[]>([]);
   const [page, setPage] = useState(1);
@@ -39,7 +43,10 @@ const CompanyPage = () => {
   const [keyword, setKeyword] = useState("");
   const [selectedCompany, setSelectedCompany] = useState<CompanyDetail | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-
+ // State for user data
+ const [userDetails, setUserDetails] = useState<{[key: string]: User}>({});
+ const [loadingUserDetails, setLoadingUserDetails] = useState<{[key: string]: boolean}>({});
+ 
   // Thêm state cho báo cáo
   const [showReportSection, setShowReportSection] = useState(false);
   const [reportData, setReportData] = useState<Report[]>([]);
@@ -60,9 +67,31 @@ const CompanyPage = () => {
         keyword: keyword.trim() || undefined,
       });
       setData(res.data.items);
+      res.data.items.forEach((company: CompanyDetail) => {
+        if (company.userUuid) {
+          fetchUserDetails(company.userUuid);
+        }
+      });
       setTotal(res.data.pagination.totalCount);
     } catch (error) {
       console.error("Lỗi khi tải dữ liệu công ty:", error);
+    }
+  };
+  // Fetch user details for a student
+  const fetchUserDetails = async (uuid: string) => {
+    if (!uuid || loadingUserDetails[uuid]) return;
+    
+    setLoadingUserDetails(prev => ({ ...prev, [uuid]: true }));
+    
+    try {
+      const response = await detailUser(uuid);
+      if (response && response.data) {
+        setUserDetails(prev => ({ ...prev, [uuid]: response.data }));
+      }
+    } catch (error) {
+      console.error(`Error fetching user details for ${uuid}:`, error);
+    } finally {
+      setLoadingUserDetails(prev => ({ ...prev, [uuid]: false }));
     }
   };
 
@@ -84,8 +113,8 @@ const CompanyPage = () => {
       setLoadingReports(false);
     }
   };
-  const handleOpenWarningModal = (userUuid: string) => {
-    setWarningTargetUuid(userUuid);
+  const handleOpenWarningModal = (uuid: string) => {
+    setWarningTargetUuid(uuid);
     setWarningModalVisible(true);
   };
   const handleSubmitWarning = async () => {
@@ -107,6 +136,23 @@ const CompanyPage = () => {
     } catch (error) {
       console.error('Error sending warning:', error);
       message.error('Không thể gửi cảnh báo, vui lòng thử lại sau');
+    }
+  };
+  // Xử lý khóa/mở khóa tài khoản
+  const handleToggleAccountStatus = async (userUuid: string) => {
+    try {
+      const result = await updateStatus(userUuid);
+      if (result && !result.error) {
+        message.success('Đã cập nhật trạng thái tài khoản');
+        
+        // Refresh user details
+        fetchUserDetails(userUuid);
+      } else {
+        message.error(result.error?.message || 'Không thể cập nhật trạng thái tài khoản');
+      }
+    } catch (error) {
+      console.error('Error updating account status:', error);
+      message.error('Đã xảy ra lỗi khi cập nhật trạng thái tài khoản');
     }
   };
 
@@ -149,6 +195,17 @@ const CompanyPage = () => {
     setShowReportSection(false);
     setCurrentReportCompany(null);
   };
+  const getVerifyLabel = (isVerify: boolean) => {
+    return isVerify ? 
+      <Tag color="green">Đã xác thực</Tag> : 
+      <Tag color="orange">Chưa xác thực</Tag>;
+  };
+  
+  const getStatusLabel = (status: number) => {
+    return status === 1 ? 
+      <Tag color="green">Hoạt động</Tag> : 
+      <Tag color="red">Đã khóa</Tag>;
+  };
 
   const columns = [
     {
@@ -184,36 +241,78 @@ const CompanyPage = () => {
       ellipsis: true,
     },
     {
+      title: 'Xác thực',
+      key: 'verification',
+      render: (_:any, record: CompanyDetail) => {
+        const userDetail = userDetails[record.userUuid || ''];
+        if (!userDetail) return <Spin size="small" />;
+        return getVerifyLabel(userDetail.isVerify);
+      },
+    },
+    {
+      title: 'Trạng thái',
+      key: 'status',
+      render: (_:any, record: CompanyDetail) => {
+        const userDetail = userDetails[record.userUuid || ''];
+        if (!userDetail) return <Spin size="small" />;
+        return getStatusLabel(userDetail.status);
+      },
+    },
+    {
       title: "Hành động",
       key: "action",
-      width: 200,
-      render: (_: any, record: CompanyDetail) => (
-        <Space size="small">
-          <Button
-            type="primary"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => openModal(record)}
-          >
-            Xem
-          </Button>
-          <Button
-            type="default"
-            size="small"
-            icon={<FileTextOutlined />}
-            onClick={() => showCompanyReports(record)}
-          >
-            Báo cáo
-          </Button>
-          <Button
-            type="default"
-            className="bg-yellow-500 hover:bg-yellow-600 text-white"
-            onClick={() => handleOpenWarningModal(record.userUuid)}
-          >
-            Cảnh báo
-          </Button>
-        </Space>
-      ),
+      width: 300,
+      render: (_: any, record: CompanyDetail) => {
+        const userDetail = userDetails[record.userUuid || ''];
+        const isActive = userDetail?.status === 1;
+    
+        return (
+          <Space size="small">
+            <Button
+              type="primary"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => openModal(record)}
+            >
+              Xem
+            </Button>
+    
+            <Button
+              type="default"
+              size="small"
+              icon={<FileTextOutlined />}
+              onClick={() => showCompanyReports(record)}
+            >
+              Báo cáo
+            </Button>
+    
+            {userDetail && (
+              <Button
+                type={isActive ? "default" : "primary"}
+                size="small"
+                icon={isActive ? <LockOutlined /> : <UnlockOutlined />}
+                onClick={() => handleToggleAccountStatus(record.userUuid || '')}
+                className={isActive
+                  ? "bg-red-500 hover:bg-red-600 text-white"
+                  : "bg-green-500 hover:bg-green-600 text-white"
+                }
+              >
+                {isActive ? "Khóa" : "Mở khóa"}
+              </Button>
+            )}
+    
+            <Button
+              type="default"
+              size="small"
+              icon={<WarningOutlined />}
+              className="bg-yellow-500 hover:bg-yellow-600 text-white"
+              onClick={() => handleOpenWarningModal(record.uuid)}
+            >
+              Cảnh báo
+            </Button>
+          </Space>
+        );
+      },
     },
   ];
 

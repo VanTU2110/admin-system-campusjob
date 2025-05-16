@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Input, Button, Space, Card, Tag, Tooltip, Spin, Empty, Modal, Select, Collapse, Typography, Divider, message } from 'antd';
-import { SearchOutlined, UserAddOutlined, InfoCircleOutlined, ReloadOutlined, FilterOutlined, FileTextOutlined, CloseOutlined, WarningOutlined } from '@ant-design/icons';
+import { SearchOutlined, UserAddOutlined, InfoCircleOutlined, ReloadOutlined, FilterOutlined, FileTextOutlined, CloseOutlined, WarningOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
 import { getPageListStudent } from '../../services/studentService';
 import { getPageListReport } from '../../services/reportService';
 import { createWarning } from '../../services/warningService';
+import { updateStatus, detailUser } from '../../services/userService';
 
 import type { StudentDetail, ListStudentResponse } from '../../types/student';
 import type { Report, ListReportResponse } from '../../types/report';
 import type { Location } from '../../types/location';
+import type { User, UserResponse, UpdateResponse } from '../../types/user';
 import type { CreateWarningParams, DetailWarningResponse } from '../../types/warning';
 
 const { Option } = Select;
@@ -27,6 +29,12 @@ const StudentPage = () => {
   const [viewModalVisible, setViewModalVisible] = useState<boolean>(false);
   const [selectedStudent, setSelectedStudent] = useState<StudentDetail | null>(null);
   const [genderFilter, setGenderFilter] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<number | null>(null);
+  const [verifyFilter, setVerifyFilter] = useState<boolean | null>(null);
+  
+  // State for user data
+  const [userDetails, setUserDetails] = useState<{[key: string]: User}>({});
+  const [loadingUserDetails, setLoadingUserDetails] = useState<{[key: string]: boolean}>({});
   
   // Thêm state cho báo cáo
   const [showReports, setShowReports] = useState<boolean>(false);
@@ -61,6 +69,14 @@ const StudentPage = () => {
       // Kiểm tra cấu trúc response và xử lý theo cấu trúc thực tế
       if (response && response.data && response.data.items) {
         setStudents(response.data.items);
+        
+        // Fetch user details for each student
+        response.data.items.forEach((student: StudentDetail) => {
+          if (student.userUuid) {
+            fetchUserDetails(student.userUuid);
+          }
+        });
+        
         if (response.data.pagination) {
           setPagination({
             page: page,
@@ -80,6 +96,24 @@ const StudentPage = () => {
       setStudents([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch user details for a student
+  const fetchUserDetails = async (uuid: string) => {
+    if (!uuid || loadingUserDetails[uuid]) return;
+    
+    setLoadingUserDetails(prev => ({ ...prev, [uuid]: true }));
+    
+    try {
+      const response = await detailUser(uuid);
+      if (response && response.data) {
+        setUserDetails(prev => ({ ...prev, [uuid]: response.data }));
+      }
+    } catch (error) {
+      console.error(`Error fetching user details for ${uuid}:`, error);
+    } finally {
+      setLoadingUserDetails(prev => ({ ...prev, [uuid]: false }));
     }
   };
 
@@ -119,8 +153,8 @@ const StudentPage = () => {
   };
   
   // Xử lý mở modal cảnh báo
-  const handleOpenWarningModal = (userUuid: string) => {
-    setWarningTargetUuid(userUuid);
+  const handleOpenWarningModal = (uuid: string) => {
+    setWarningTargetUuid(uuid);
     setWarningModalVisible(true);
   };
   
@@ -144,6 +178,24 @@ const StudentPage = () => {
     } catch (error) {
       console.error('Error sending warning:', error);
       message.error('Không thể gửi cảnh báo, vui lòng thử lại sau');
+    }
+  };
+  
+  // Xử lý khóa/mở khóa tài khoản
+  const handleToggleAccountStatus = async (userUuid: string) => {
+    try {
+      const result = await updateStatus(userUuid);
+      if (result && !result.error) {
+        message.success('Đã cập nhật trạng thái tài khoản');
+        
+        // Refresh user details
+        fetchUserDetails(userUuid);
+      } else {
+        message.error(result.error?.message || 'Không thể cập nhật trạng thái tài khoản');
+      }
+    } catch (error) {
+      console.error('Error updating account status:', error);
+      message.error('Đã xảy ra lỗi khi cập nhật trạng thái tài khoản');
     }
   };
 
@@ -214,6 +266,18 @@ const StudentPage = () => {
         return <Tag color="purple">Khác</Tag>;
     }
   };
+  
+  const getVerifyLabel = (isVerify: boolean) => {
+    return isVerify ? 
+      <Tag color="green">Đã xác thực</Tag> : 
+      <Tag color="orange">Chưa xác thực</Tag>;
+  };
+  
+  const getStatusLabel = (status: number) => {
+    return status === 1 ? 
+      <Tag color="green">Hoạt động</Tag> : 
+      <Tag color="red">Đã khóa</Tag>;
+  };
 
   const getReportStatusLabel = (status: string) => {
     switch (status.toLowerCase()) {
@@ -248,11 +312,33 @@ const StudentPage = () => {
       filteredData = filteredData.filter(student => student.gender === genderFilter);
     }
     
+    if (statusFilter !== null || verifyFilter !== null) {
+      filteredData = filteredData.filter(student => {
+        const userDetail = userDetails[student.userUuid || ''];
+        
+        if (!userDetail) return false;
+        
+        let statusMatch = true;
+        if (statusFilter !== null) {
+          statusMatch = userDetail.status === statusFilter;
+        }
+        
+        let verifyMatch = true;
+        if (verifyFilter !== null) {
+          verifyMatch = userDetail.isVerify === verifyFilter;
+        }
+        
+        return statusMatch && verifyMatch;
+      });
+    }
+    
     return filteredData;
   };
 
   const resetFilters = () => {
     setGenderFilter(null);
+    setStatusFilter(null);
+    setVerifyFilter(null);
     fetchStudents(1, pagination.pageSize, searchKeyword);
   };
 
@@ -291,53 +377,67 @@ const StudentPage = () => {
       ),
     },
     {
-      title: 'Chuyên ngành',
-      dataIndex: 'major',
-      key: 'major',
-      ellipsis: {
-        showTitle: false,
+      title: 'Xác thực',
+      key: 'verification',
+      render: (_: any, record: StudentDetail) => {
+        const userDetail = userDetails[record.userUuid || ''];
+        if (!userDetail) return <Spin size="small" />;
+        return getVerifyLabel(userDetail.isVerify);
       },
-      render: (text: string) => (
-        <Tooltip placement="topLeft" title={text || 'N/A'}>
-          <span>{text || 'N/A'}</span>
-        </Tooltip>
-      ),
     },
     {
-      title: 'Số điện thoại',
-      dataIndex: 'phoneNumber',
-      key: 'phoneNumber',
-      render: (text: string) => text || 'N/A',
+      title: 'Trạng thái',
+      key: 'status',
+      render: (_:any, record: StudentDetail) => {
+        const userDetail = userDetails[record.userUuid || ''];
+        if (!userDetail) return <Spin size="small" />;
+        return getStatusLabel(userDetail.status);
+      },
     },
     {
       title: 'Thao tác',
       key: 'action',
-      render: (_: any, record: StudentDetail) => (
-        <Space size="small">
-          <Button
-            type="text"
-            icon={<InfoCircleOutlined />}
-            onClick={() => handleViewStudent(record)}
-            className="text-blue-500 hover:text-blue-700"
-            title="Xem chi tiết"
-          />
-          <Button
-            type="text"
-            icon={<FileTextOutlined />}
-            onClick={() => handleViewReports(record)}
-            className="text-orange-500 hover:text-orange-700"
-            title="Xem báo cáo"
-          />
-          <Button
-            type="default"
-            icon={<WarningOutlined />}
-            onClick={() => handleOpenWarningModal(record.userUuid)}
-            className="bg-yellow-500 hover:bg-yellow-600 text-white"
-          >
-            Cảnh báo
-          </Button>
-        </Space>
-      ),
+      render: (_: any, record: StudentDetail) => {
+        const userDetail = userDetails[record.userUuid || ''];
+        const isActive = userDetail?.status === 1;
+        
+        return (
+          <Space size="small">
+            <Button
+              type="text"
+              icon={<InfoCircleOutlined />}
+              onClick={() => handleViewStudent(record)}
+              className="text-blue-500 hover:text-blue-700"
+              title="Xem chi tiết"
+            />
+            <Button
+              type="text"
+              icon={<FileTextOutlined />}
+              onClick={() => handleViewReports(record)}
+              className="text-orange-500 hover:text-orange-700"
+              title="Xem báo cáo"
+            />
+            {userDetail && (
+              <Button
+                type={isActive ? "default" : "primary"}
+                icon={isActive ? <LockOutlined /> : <UnlockOutlined />}
+                onClick={() => handleToggleAccountStatus(record.userUuid || '')}
+                className={isActive ? "bg-red-500 hover:bg-red-600 text-white" : "bg-green-500 hover:bg-green-600 text-white"}
+              >
+                {isActive ? "Khóa" : "Mở khóa"}
+              </Button>
+            )}
+            <Button
+              type="default"
+              icon={<WarningOutlined />}
+              onClick={() => handleOpenWarningModal(record.uuid)}
+              className="bg-yellow-500 hover:bg-yellow-600 text-white"
+            >
+              Cảnh báo
+            </Button>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -420,8 +520,8 @@ const StudentPage = () => {
             />
             
             <Select
-              placeholder="Lọc theo giới tính"
-              className="w-full sm:w-40"
+              placeholder="Giới tính"
+              className="w-full sm:w-28"
               value={genderFilter}
               onChange={setGenderFilter}
               allowClear
@@ -429,6 +529,28 @@ const StudentPage = () => {
               <Option value={0}>Nam</Option>
               <Option value={1}>Nữ</Option>
               <Option value={2}>Khác</Option>
+            </Select>
+            
+            <Select
+              placeholder="Trạng thái"
+              className="w-full sm:w-28"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allowClear
+            >
+              <Option value={1}>Hoạt động</Option>
+              <Option value={0}>Đã khóa</Option>
+            </Select>
+            
+            <Select
+              placeholder="Xác thực"
+              className="w-full sm:w-28"
+              value={verifyFilter}
+              onChange={setVerifyFilter}
+              allowClear
+            >
+              <Option value={true}>Đã xác thực</Option>
+              <Option value={false}>Chưa xác thực</Option>
             </Select>
           </div>
           
@@ -493,8 +615,14 @@ const StudentPage = () => {
           <div className="space-y-4">
             <div className="border-b pb-4">
               <h3 className="text-xl font-bold text-center mb-2">{selectedStudent.fullname || 'N/A'}</h3>
-              <div className="flex justify-center">
+              <div className="flex justify-center gap-2">
                 {getGenderLabel(selectedStudent.gender)}
+                {userDetails[selectedStudent.userUuid || ''] && (
+                  <>
+                    {getVerifyLabel(userDetails[selectedStudent.userUuid || ''].isVerify)}
+                    {getStatusLabel(userDetails[selectedStudent.userUuid || ''].status)}
+                  </>
+                )}
               </div>
             </div>
             
@@ -523,6 +651,18 @@ const StudentPage = () => {
                 <p className="text-gray-500 text-sm">Mã người dùng</p>
                 <p className="font-medium">{selectedStudent.userUuid || 'N/A'}</p>
               </div>
+              {userDetails[selectedStudent.userUuid || ''] && (
+                <div>
+                  <p className="text-gray-500 text-sm">Email</p>
+                  <p className="font-medium">{userDetails[selectedStudent.userUuid || ''].email || 'N/A'}</p>
+                </div>
+              )}
+              {userDetails[selectedStudent.userUuid || ''] && (
+                <div>
+                  <p className="text-gray-500 text-sm">Ngày tạo tài khoản</p>
+                  <p className="font-medium">{formatDate(userDetails[selectedStudent.userUuid || ''].createdAt)}</p>
+                </div>
+              )}
             </div>
             
             <div className="border-t pt-4">
