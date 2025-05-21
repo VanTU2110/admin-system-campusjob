@@ -468,7 +468,7 @@ const CompanyPage = () => {
       >
         <div className="space-y-4">
           <div>
-            <Text strong>Nội dung cảnh báo:</Text>
+            <Text >Nội dung cảnh báo:</Text>
             <Input.TextArea
               rows={4}
               value={warningMessage}

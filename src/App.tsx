@@ -8,6 +8,7 @@ import SkillPage from './pages/skills';
 import RequireAuth from './components/RequireAuth';
 import Layout from './components/Layout';
 import StudentDetailPage from './pages/student/studentdetail';
+import JobsPage from './pages/job';
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
         <Route path="/skill" element={<SkillPage />} />
         <Route path="/reports" element={<div>Báo cáo</div>} />
         <Route path="/student-detail/:studentUuid" element={<StudentDetailPage />} />
+        <Route path='job' element = {<JobsPage/>} />
 
       </Route>
 
